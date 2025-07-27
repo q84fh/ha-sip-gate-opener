@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any, Callable
 
-from pyVoIP import VoIP
-from pyVoIP.VoIP import CallState, InvalidStateError
+from pyVoIP.VoIP import VoIPPhone, CallState, InvalidStateError
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -40,7 +40,7 @@ class SipGateOpenerCoordinator:
         """Initialize the coordinator."""
         self.hass = hass
         self.entry = entry
-        self._sip_client: VoIP | None = None
+        self._sip_phone: VoIPPhone | None = None
         self._is_calling = False
         self._call_status = STATE_IDLE
         self._status_callbacks: list[Callable[[str], None]] = []
@@ -137,29 +137,38 @@ class SipGateOpenerCoordinator:
 
     def _blocking_sip_call(self) -> None:
         """Make the blocking SIP call."""
-        # Initialize SIP client
+        # Initialize SIP phone
+        call_completed = False
+        
+        def call_callback(call):
+            """Callback for handling incoming calls (not used for outgoing)."""
+            # This is for incoming calls, we're making outgoing calls
+            pass
+        
         try:
-            # Configure for NAT traversal
-            sip_client = VoIP(
-                server=self.sip_server,
-                port=self.sip_port,
-                username=self.username,
-                password=self.password,
-                calleeID=self.caller_id or self.username,
-                # NAT configuration
-                myIP=None,  # Auto-detect
-                hostname=self.sip_server,
+            _LOGGER.debug("Creating SIP phone instance")
+            # Create VoIPPhone instance with correct parameters
+            sip_phone = VoIPPhone(
+                self.sip_server,
+                self.sip_port,
+                self.username,
+                self.password,
+                callCallback=call_callback
             )
             
-            _LOGGER.debug("SIP client initialized, starting call to %s", self.gate_number)
+            _LOGGER.debug("Starting SIP phone")
+            sip_phone.start()
+            
+            # Wait a moment for the phone to initialize
+            time.sleep(1)
+            
+            _LOGGER.debug("SIP phone started, making call to %s", self.gate_number)
             self._update_status(STATE_CALLING)
             
             # Make the call
-            call = sip_client.call(self.gate_number)
+            call = sip_phone.call(self.gate_number)
             
             # Wait for the call to be established or get busy signal
-            # We'll wait a bit to ensure the call is processed
-            import time
             start_time = time.time()
             max_wait_time = 10  # Maximum 10 seconds
             
@@ -172,16 +181,19 @@ class SipGateOpenerCoordinator:
                         _LOGGER.info("Call answered, waiting for ring duration")
                         self._update_status(STATE_ANSWERED)
                         time.sleep(DEFAULT_RING_DURATION)
+                        call_completed = True
                         break
                     elif state == CallState.BUSY:
                         _LOGGER.info("Gate number is busy (expected behavior)")
                         self._update_status(STATE_BUSY)
+                        call_completed = True
                         break
                     elif state == CallState.ENDED:
                         _LOGGER.info("Call ended")
+                        call_completed = True
                         break
                     elif state in [CallState.RINGING, CallState.TRYING]:
-                        if self._call_status != STATE_RINGING:
+                        if self._call_status not in [STATE_RINGING, STATE_CALLING]:
                             _LOGGER.debug("Call is ringing/trying...")
                             self._update_status(STATE_RINGING)
                         time.sleep(0.5)  # Wait a bit before checking again
@@ -195,6 +207,11 @@ class SipGateOpenerCoordinator:
                     _LOGGER.error("Error checking call state: %s", e)
                     break
             
+            # If we didn't get a definitive result, assume it worked
+            if not call_completed:
+                _LOGGER.info("Call timeout reached, assuming gate was triggered")
+                call_completed = True
+            
             # Hang up the call
             try:
                 call.hangup()
@@ -202,13 +219,19 @@ class SipGateOpenerCoordinator:
             except Exception as e:
                 _LOGGER.debug("Error hanging up call (may already be ended): %s", e)
             
-            # Stop the SIP client
+            # Stop the SIP phone
             try:
-                sip_client.stop()
-                _LOGGER.debug("SIP client stopped")
+                sip_phone.stop()
+                _LOGGER.debug("SIP phone stopped")
             except Exception as e:
-                _LOGGER.debug("Error stopping SIP client: %s", e)
+                _LOGGER.debug("Error stopping SIP phone: %s", e)
                 
         except Exception as err:
             _LOGGER.error("SIP call failed: %s", err)
+            # Try to clean up if phone was created
+            if 'sip_phone' in locals():
+                try:
+                    sip_phone.stop()
+                except:
+                    pass
             raise

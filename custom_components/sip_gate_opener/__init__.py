@@ -15,7 +15,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up SIP Gate Opener from a config entry."""
     hass.data.setdefault(DOMAIN, {})
     
-    # Create the coordinator instance instead of storing entry.data
+    # Create the coordinator instance
     coordinator = SipGateOpenerCoordinator(hass, entry)
     hass.data[DOMAIN][entry.entry_id] = coordinator
     
