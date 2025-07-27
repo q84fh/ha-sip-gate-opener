@@ -4,6 +4,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 
+from .coordinator import SipGateOpenerCoordinator
+
 _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "sip_gate_opener"
@@ -12,10 +14,10 @@ PLATFORMS = [Platform.BUTTON, Platform.SENSOR]
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up SIP Gate Opener from a config entry."""
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = entry.data
     
-    # Initialize sensor storage
-    hass.data.setdefault(f"{DOMAIN}_sensors", {})
+    # Create the coordinator instance instead of storing entry.data
+    coordinator = SipGateOpenerCoordinator(hass, entry)
+    hass.data[DOMAIN][entry.entry_id] = coordinator
     
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
