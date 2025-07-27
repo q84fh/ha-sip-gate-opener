@@ -1,0 +1,12 @@
+{
+  "domain": "sip_gate_opener",
+  "name": "SIP Gate Opener",
+  "version": "1.0.0",
+  "documentation": "https://github.com/q84fh/sip-gate-opener",
+  "issue_tracker": "https://github.com/q84fh/sip-gate-opener/issues",
+  "dependencies": [],
+  "codeowners": ["@q84fh"],
+  "requirements": ["pyVoIP>=1.6.0"],
+  "config_flow": true,
+  "iot_class": "local_push"
+}

@@ -1,0 +1,7 @@
+open_gate:
+  name: Open Gate
+  description: Opens the gate by making a SIP call to the configured number
+  target:
+    entity:
+      integration: sip_gate_opener
+      domain: button

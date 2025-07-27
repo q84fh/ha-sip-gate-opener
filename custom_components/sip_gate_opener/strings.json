@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "SIP Gate Opener Configuration",
+        "description": "Configure your SIP server settings for gate opening",
+        "data": {
+          "sip_server": "SIP Server",
+          "sip_port": "SIP Port",
+          "username": "Username",
+          "password": "Password",
+          "gate_number": "Gate Phone Number",
+          "caller_id": "Caller ID (optional)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to SIP server",
+      "invalid_auth": "Invalid authentication credentials",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "SIP Gate Opener is already configured"
+    }
+  },
+  "entity": {
+    "button": {
+      "open_gate": {
+        "name": "Open Gate"
+      }
+    },
+    "sensor": {
+      "call_status": {
+        "name": "Gate Call Status",
+        "state": {
+          "idle": "Idle",
+          "connecting": "Connecting",
+          "calling": "Calling",
+          "ringing": "Ringing",
+          "answered": "Answered",
+          "busy": "Busy",
+          "completed": "Completed",
+          "failed": "Failed"
+        }
+      }
+    }
+  },
+  "services": {
+    "open_gate": {
+      "name": "Open Gate",
+      "description": "Opens the gate by making a SIP call to the configured number"
+    }
+  }
+}
