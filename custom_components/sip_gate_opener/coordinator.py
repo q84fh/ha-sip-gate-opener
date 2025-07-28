@@ -95,12 +95,18 @@ class SipGateOpenerCoordinator:
             self._call_status = status
             _LOGGER.debug("Call status updated to: %s", status)
             
-            # Notify all callbacks
-            for callback in self._status_callbacks:
-                try:
-                    callback(status)
-                except Exception as err:
-                    _LOGGER.error("Error in status callback: %s", err)
+            # Schedule callback notifications on the main thread
+            if self._status_callbacks:
+                # Use call_soon_threadsafe for thread safety
+                self.hass.loop.call_soon_threadsafe(self._notify_status_callbacks, status)
+
+    def _notify_status_callbacks(self, status: str) -> None:
+        """Notify status callbacks on the main thread."""
+        for callback in self._status_callbacks:
+            try:
+                callback(status)
+            except Exception as err:
+                _LOGGER.error("Error in status callback: %s", err)
 
     async def async_open_gate(self) -> None:
         """Open the gate by making a SIP call."""
@@ -147,77 +153,128 @@ class SipGateOpenerCoordinator:
         
         try:
             _LOGGER.debug("Creating SIP phone instance")
-            # Create VoIPPhone instance with correct parameters
+            _LOGGER.debug("SIP Config - Server: %s, Port: %s, Username: %s", 
+                         self.sip_server, self.sip_port, self.username)
+            
+            # Try to get local IP for NAT configuration
+            import socket
+            try:
+                # Get local IP by connecting to a remote address
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                local_ip = s.getsockname()[0]
+                s.close()
+                _LOGGER.debug("Detected local IP: %s", local_ip)
+            except Exception as e:
+                local_ip = None
+                _LOGGER.debug("Could not detect local IP: %s", e)
+            
+            # Create VoIPPhone instance with NAT configuration
             sip_phone = VoIPPhone(
                 self.sip_server,
                 self.sip_port,
                 self.username,
                 self.password,
-                callCallback=call_callback
+                callCallback=call_callback,
+                myIP=local_ip,  # Specify local IP for NAT
+                sipPort=0,      # Use random port to avoid conflicts
+                rtpPortLow=10000,
+                rtpPortHigh=20000
             )
             
             _LOGGER.debug("Starting SIP phone")
             sip_phone.start()
             
-            # Wait a moment for the phone to initialize
-            time.sleep(1)
+            # Wait a moment for the phone to initialize and check status
+            time.sleep(2)
             
-            _LOGGER.debug("SIP phone started, making call to %s", self.gate_number)
+            # Check phone status
+            phone_status = sip_phone.get_status()
+            _LOGGER.info("SIP phone status after start: %s", phone_status)
+            
+            # Only proceed if phone is registered
+            from pyVoIP.VoIP import PhoneStatus
+            if phone_status != PhoneStatus.REGISTERED:
+                raise Exception(f"SIP phone failed to register. Status: {phone_status}")
+            
+            _LOGGER.debug("SIP phone registered successfully, making call to %s", self.gate_number)
             self._update_status(STATE_CALLING)
             
-            # Make the call
-            call = sip_phone.call(self.gate_number)
+            # Try different number formats for Polish numbers
+            number_to_call = self.gate_number
+            if number_to_call.startswith('+48'):
+                # Try without country code first
+                alt_number = number_to_call[3:]  # Remove +48
+                _LOGGER.info("Trying Polish number without country code: %s", alt_number)
+                number_to_call = alt_number
             
-            # Wait for the call to be established or get busy signal
+            # Make the call
+            call = sip_phone.call(number_to_call)
+            _LOGGER.debug("Call initiated to %s, call object: %s", number_to_call, call)
+            
+            # Wait for the call to be established or get response
             start_time = time.time()
-            max_wait_time = 10  # Maximum 10 seconds
+            max_wait_time = 30  # Increased to 30 seconds for troubleshooting
+            last_logged_state = None
             
             while time.time() - start_time < max_wait_time:
                 try:
                     state = call.state
-                    _LOGGER.debug("Call state: %s", state)
+                    elapsed = time.time() - start_time
                     
-                    if state == CallState.ANSWERED:
-                        _LOGGER.info("Call answered, waiting for ring duration")
-                        self._update_status(STATE_ANSWERED)
-                        time.sleep(DEFAULT_RING_DURATION)
+                    # Only log state changes to reduce spam
+                    if state != last_logged_state:
+                        _LOGGER.info("Call state changed to: %s (elapsed: %.1fs)", state, elapsed)
+                        last_logged_state = state
+                    
+                    # Check for state changes
+                    if state == CallState.ENDED:
+                        _LOGGER.info("Call ended - this usually means the gate system processed the call")
                         call_completed = True
                         break
-                    elif state == CallState.BUSY:
-                        _LOGGER.info("Gate number is busy (expected behavior)")
-                        self._update_status(STATE_BUSY)
+                    elif state == CallState.RINGING:
+                        _LOGGER.info("Call is ringing at destination - success!")
+                        self._update_status(STATE_RINGING)
+                        # Wait a bit for the gate to process, then consider it successful
+                        time.sleep(2)
                         call_completed = True
                         break
-                    elif state == CallState.ENDED:
-                        _LOGGER.info("Call ended")
-                        call_completed = True
-                        break
-                    elif state in [CallState.RINGING, CallState.TRYING]:
-                        if self._call_status not in [STATE_RINGING, STATE_CALLING]:
-                            _LOGGER.debug("Call is ringing/trying...")
-                            self._update_status(STATE_RINGING)
-                        time.sleep(0.5)  # Wait a bit before checking again
+                    elif state == CallState.DIALING:
+                        # Still trying to connect - wait longer
+                        time.sleep(1)  # Check less frequently
                     else:
-                        time.sleep(0.1)  # Small delay for other states
+                        # For any other state, log it and wait
+                        _LOGGER.info("Unexpected call state: %s", state)
+                        time.sleep(0.5)
                         
-                except InvalidStateError:
-                    _LOGGER.debug("Call state changed, continuing...")
-                    time.sleep(0.1)
+                except InvalidStateError as e:
+                    _LOGGER.debug("InvalidStateError during call state check: %s", e)
+                    time.sleep(0.5)
                 except Exception as e:
                     _LOGGER.error("Error checking call state: %s", e)
                     break
             
-            # If we didn't get a definitive result, assume it worked
-            if not call_completed:
-                _LOGGER.info("Call timeout reached, assuming gate was triggered")
-                call_completed = True
-            
-            # Hang up the call
+            # Analyze final state
+            final_state = None
             try:
-                call.hangup()
-                _LOGGER.debug("Call hung up")
+                final_state = call.state
+                _LOGGER.info("Call completed with final state: %s", final_state)
             except Exception as e:
-                _LOGGER.debug("Error hanging up call (may already be ended): %s", e)
+                _LOGGER.debug("Could not get final call state: %s", e)
+            
+            if not call_completed:
+                if final_state == CallState.DIALING:
+                    _LOGGER.error("Call remained in DIALING state for %d seconds - SIP routing issue", max_wait_time)
+                    raise Exception(f"Call failed to progress beyond DIALING state after {max_wait_time} seconds. This suggests the SIP server cannot route calls to '{number_to_call}'. Please check: 1) Number format, 2) PSTN calling permissions, 3) Network/firewall settings")
+                else:
+                    _LOGGER.info("Call timeout reached with state: %s - assuming success", final_state)
+                    call_completed = True
+            
+            # Clean up call object
+            try:
+                _LOGGER.debug("Cleaning up call, final state: %s", call.state)
+            except:
+                pass
             
             # Stop the SIP phone
             try:
