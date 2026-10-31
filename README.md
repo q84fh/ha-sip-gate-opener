@@ -81,7 +81,7 @@ resources:
   - https://github.com/q84fh/ha-sip-gate-opener//deploy/kubernetes?ref=v1.0.0
 images:
   - name: ghcr.io/q84fh/ha-sip-gate-opener
-    newTag: "1.0.0"
+    newTag: "1"        # or pin an exact version, e.g. "1.1.0"
 configMapGenerator:
   - name: gate-opener
     behavior: merge
@@ -115,8 +115,9 @@ GATE_SECRET=… GATE_WEBHOOK_URL=… ./gate-opener serve
 
 Put the app behind a reverse proxy with HTTPS: Caddy, nginx, Traefik, an ingress controller, or a Cloudflare
 Tunnel. Expose only this app, not Home Assistant. Set `GATE_IP_HEADER` to the header your proxy uses for the
-client IP, so logs and notifications show the guest's real IP. Rate limiting at the proxy is a good idea.
-The Kubernetes ingress sets it for ingress-nginx.
+client IP, so logs and notifications show the guest's real IP. The proxy must overwrite that header,
+otherwise guests can fake it. With Caddy, add `header_up X-Real-IP {remote_host}`. Rate limiting at the
+proxy is a good idea. The Kubernetes ingress sets it for ingress-nginx.
 
 ### 4. Send links to guests
 
@@ -162,12 +163,33 @@ Measure your gate's cycle with a stopwatch and set `GATE_OPENING`, `GATE_OPEN_HO
 timer starts when Home Assistant accepts the webhook. If your controller needs a few seconds to answer the
 call, add them to `GATE_OPENING`.
 
+## Security
+
+What is protected:
+- Links can't be forged or altered: they are signed with HMAC-SHA256 (128-bit tag, constant-time check).
+- Only a POST from the page itself opens the gate. Cross-site requests, link previews and crawlers can't.
+- The guest name is escaped on the page and is plain data in Home Assistant.
+- Secrets never reach logs: not the signing key, not the webhook URL.
+- The container runs as non-root on a read-only filesystem with all capabilities dropped.
+- Images and release binaries come with build provenance attestations:
+  `gh attestation verify oci://ghcr.io/q84fh/ha-sip-gate-opener:1 -R q84fh/ha-sip-gate-opener`.
+
+What to keep in mind:
+- A link works for anyone who has it until it expires. Use short TTLs, and revoke links that leak.
+- The full link is in your reverse proxy's access logs. Treat those logs as sensitive.
+- The webhook ID is as sensitive as a key to the gate. Keep `local_only: true` in the automation.
+
+Please report vulnerabilities privately via
+[GitHub security advisories](https://github.com/q84fh/ha-sip-gate-opener/security/advisories/new).
+
 ## Good to know
 
 - The gate cycle is kept in memory. Run one instance. After a restart the app assumes the gate is closed.
 - `GET /healthz` is the health check.
 - Logs are JSON on stdout. They record who opened the gate, when and from which IP, plus rejected
   attempts.
+- Image tags: `1.2.3` (exact), `1.2`, `1` (latest 1.x, recommended), `latest`, and `edge` (main branch).
+  `gate-opener version` prints the running version.
 - To add a language, add an entry to `langs` in [`i18n.go`](i18n.go). A test checks that no text is
   missing.
 
@@ -178,6 +200,23 @@ make test        # go vet + tests with the race detector
 make run         # local server with a dev key; the webhook call fails without Home Assistant
 make link NAME=Ann
 ```
+
+The only dependency is the Go standard library. Dependabot updates Go, the base images and GitHub Actions
+weekly, and patch updates are merged automatically once CI passes. CI runs `go vet`, the tests (Go stable
+and oldstable) and `govulncheck`.
+
+### Releasing
+
+```bash
+git tag -a v1.2.3 -m v1.2.3 && git push origin v1.2.3
+```
+
+CI then:
+- runs the tests;
+- publishes the image as `1.2.3`, `1.2`, `1` and `latest`;
+- creates a GitHub release with generated notes, binaries for Linux, macOS and Windows, and `SHA256SUMS`.
+
+Use semantic versioning: a major version only for breaking changes in configuration or links.
 
 ## License
 
