@@ -1,6 +1,6 @@
 # ha-sip-gate-opener
-
-Let guests open your driveway gate from their phone with a temporary link, using
+You have a gate that is opened by calling it with pre-registered phone number? Register your VoIP number to your gate and 
+let guests open your driveway gate from their phone with a temporary link, using
 [Home Assistant](https://www.home-assistant.io/). Your Home Assistant doesn't need to be exposed to the internet.
 
 ![Guest page: closed, opening, open, closing](docs/screenshot.png)
