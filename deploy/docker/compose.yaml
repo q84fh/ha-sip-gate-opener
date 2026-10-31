@@ -3,7 +3,7 @@
 # and create links with: docker compose exec gate-opener /gate-opener token -ttl 24h -name Ann
 services:
   gate-opener:
-    image: ghcr.io/q84fh/ha-sip-gate-opener:latest
+    image: ghcr.io/q84fh/ha-sip-gate-opener:1  # latest 1.x release; or pin e.g. 1.1.0
     restart: unless-stopped
     env_file: .env
     ports:

@@ -23,7 +23,7 @@ resources:
 images:
   - name: gate-opener
     newName: ghcr.io/q84fh/ha-sip-gate-opener
-    newTag: latest
+    newTag: "1"
 configMapGenerator:
   - name: gate-opener
     literals:
