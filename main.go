@@ -20,6 +20,7 @@ const usage = `Usage:
   gate-opener [serve]                        run the HTTP server
   gate-opener token [-ttl 24h] [-name Ann]   create a guest link (ttl e.g. 90m, 12h, 2d, 1d12h)
   gate-opener inspect <token|link>           show link details
+  gate-opener version                        print the version
 
 Environment:
   GATE_SECRET        HMAC key, base64, at least 32 bytes (required)
@@ -36,6 +37,9 @@ Environment:
   TZ                 time zone for dates shown to guests, e.g. Europe/Warsaw (default UTC)
 `
 
+// version is set at build time: -ldflags "-X main.version=1.2.3".
+var version = "dev"
+
 func main() {
 	args := os.Args[1:]
 	cmd := "serve"
@@ -50,6 +54,8 @@ func main() {
 		err = tokenCmd(args)
 	case "inspect":
 		err = inspectCmd(args)
+	case "version":
+		fmt.Println(version)
 	default:
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
@@ -147,7 +153,7 @@ func serve() error {
 		defer cancel()
 		srv.Shutdown(shutdownCtx)
 	}()
-	log.Info("listening", "addr", srv.Addr, "opening", gate.Opening.String(), "open", gate.Open.String(), "closing", gate.Closing.String(), "revoked", len(revoked), "lang", lang.Code, "tz", time.Local.String())
+	log.Info("listening", "version", version, "addr", srv.Addr, "opening", gate.Opening.String(), "open", gate.Open.String(), "closing", gate.Closing.String(), "revoked", len(revoked), "lang", lang.Code, "tz", time.Local.String())
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
