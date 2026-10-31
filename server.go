@@ -267,6 +267,11 @@ func (s *Server) callWebhook(ctx context.Context, t Token, ip string) error {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := s.Client.Do(req)
 	if err != nil {
+		// *url.Error includes the full URL; the webhook ID in it is a secret, keep it out of logs.
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			err = ue.Err
+		}
 		return err
 	}
 	resp.Body.Close()
@@ -293,8 +298,8 @@ func sameOrigin(r *http.Request) bool {
 // that the reverse proxy always overwrites, otherwise clients could spoof it.
 func (s *Server) clientIP(r *http.Request) string {
 	if s.IPHeader != "" {
-		if ip := strings.TrimSpace(r.Header.Get(s.IPHeader)); ip != "" {
-			return ip
+		if ip := net.ParseIP(strings.TrimSpace(r.Header.Get(s.IPHeader))); ip != nil {
+			return ip.String()
 		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)

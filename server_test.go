@@ -267,11 +267,35 @@ func TestLanguagesComplete(t *testing.T) {
 func TestClientIPHeader(t *testing.T) {
 	f := newFixture(t)
 	tok, _ := f.token(t, time.Hour, "")
-	f.srv.IPHeader = ""
-	f.do("POST", "/"+tok+"/open", map[string]string{"X-Real-IP": "6.6.6.6"})
-	var payload map[string]string
-	json.Unmarshal([]byte(f.body.Load().(string)), &payload)
-	if payload["ip"] != "192.0.2.1" {
-		t.Fatalf("untrusted header must be ignored, got %q", payload["ip"])
+	for _, c := range []struct{ header, value, want string }{
+		{"", "6.6.6.6", "192.0.2.1"},               // header not trusted
+		{"X-Real-IP", "6.6.6.6", "6.6.6.6"},        // trusted
+		{"X-Real-IP", "<b>not an ip", "192.0.2.1"}, // garbage falls back to the peer address
+		{"X-Real-IP", " 2001:db8::1 ", "2001:db8::1"},
+	} {
+		f.srv.IPHeader = c.header
+		f.clock = f.clock.Add(2 * time.Minute) // past the previous gate cycle
+		f.body.Store("")
+		f.do("POST", "/"+tok+"/open", map[string]string{"X-Real-IP": c.value})
+		var payload map[string]string
+		json.Unmarshal([]byte(f.body.Load().(string)), &payload)
+		if payload["ip"] != c.want {
+			t.Errorf("header %q=%q: got ip %q, want %q", c.header, c.value, payload["ip"], c.want)
+		}
+	}
+}
+
+func TestWebhookURLNotLogged(t *testing.T) {
+	f := newFixture(t)
+	var logs strings.Builder
+	f.srv.Log = slog.New(slog.NewJSONHandler(&logs, nil))
+	f.srv.WebhookURL = "http://127.0.0.1:1/api/webhook/super-secret-id"
+	f.srv.Client = &http.Client{Timeout: time.Second}
+	tok, _ := f.token(t, time.Hour, "")
+	if w := f.do("POST", "/"+tok+"/open", nil); w.Code != http.StatusBadGateway {
+		t.Fatalf("want 502, got %d", w.Code)
+	}
+	if !strings.Contains(logs.String(), "webhook failed") || strings.Contains(logs.String(), "super-secret-id") {
+		t.Fatalf("webhook ID must not be logged: %s", logs.String())
 	}
 }
