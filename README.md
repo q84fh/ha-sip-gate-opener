@@ -5,7 +5,7 @@ Let guests open your driveway gate from their phone with a temporary link, using
 
 ![Guest page: closed, opening, open, closing](docs/screenshot.png)
 
-You send a guest a link like `https://gate.example.com/AQAAAABq…`. It works without logging in until it
+You send a guest a link like `https://gate.example.com/#AQAAAABq…`. It works without logging in until it
 expires (e.g. after 24 hours). The page has one big button. The button calls a Home Assistant webhook, and
 your automation opens the gate. It was built for gates with a GSM/SIP controller that opens when called,
 using the [ha-sip](https://github.com/arnonym/ha-sip) add-on. It works with any gate that Home Assistant can
@@ -23,6 +23,8 @@ open (switch, cover, script…).
 - **Safe by default.**
   - Opening the page (GET) never opens the gate, so link previews in messengers are harmless.
   - The button sends a same-origin POST only.
+  - The token is after `#` in the link. Browsers never send that part to the server, so the token is not in
+    access logs or Referer headers. The page passes it to the app in the body of a POST.
   - Strict CSP, no cookies, no third-party resources.
   - The app has no Home Assistant token. It only knows a secret webhook ID, and the webhook is accepted only
     from your LAN.
@@ -129,7 +131,7 @@ kubectl -n gate exec deploy/gate-opener -- /gate-opener token -ttl 2d -name Ann
 ```
 
 ```
-https://gate.example.com/AQAAAABq560xG5kUQ8IgQW5uYfEZEoo9cGKidNOJp1AumPQ
+https://gate.example.com/#AQAAAABq560xG5kUQ8IgQW5uYfEZEoo9cGKidNOJp1AumPQ
 Valid until: 2026-11-01 22:21 CET, ID: 6a42ec3f1b2c
 ```
 
@@ -176,7 +178,8 @@ What is protected:
 
 What to keep in mind:
 - A link works for anyone who has it until it expires. Use short TTLs, and revoke links that leak.
-- The full link is in your reverse proxy's access logs. Treat those logs as sensitive.
+- The token never reaches server or proxy logs, but it stays in the guest's browser history and in the chat
+  you sent it through.
 - The webhook ID is as sensitive as a key to the gate. Keep `local_only: true` in the automation.
 
 Please report vulnerabilities privately via

@@ -13,41 +13,45 @@
 <link rel="stylesheet" href="/_s/app.css?v={{.V}}">
 </head>
 <body>
-<main class="card{{if ne .State "ready"}} msg{{end}}">
-{{- if eq .State "ready"}}
-  <header>
-    <h1>{{if .Name}}{{printf .T.Hello .Name}}{{else}}{{.T.Welcome}}{{end}}</h1>
-    <p class="hint">{{.T.Hint}}</p>
-  </header>
-
-  <button id="open" class="gate-btn" type="button" data-state="idle"
-    data-elapsed="{{.Gate.Elapsed}}" data-opening="{{.Gate.Opening}}" data-open="{{.Gate.Open}}" data-closing="{{.Gate.Closing}}">
-    <span class="ring" aria-hidden="true"></span>
-    <span class="progress" aria-hidden="true"></span>
-    <svg class="icon icon-gate" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M2.5 21.5V4.5M21.5 21.5V4.5"/>
-      <path class="leaf leaf-l" d="M2.5 8H11.7V19H2.5M2.5 19L11.7 8"/>
-      <path class="leaf leaf-r" d="M21.5 8H12.3V19H21.5M21.5 19L12.3 8"/>
-    </svg>
-    <svg class="icon icon-err" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20.5h20L12 3zM12 10v4.5M12 17.5v.01"/></svg>
-    <span class="spinner" aria-hidden="true"></span>
-    <span class="label">{{.T.JS.Open}}</span>
-    <span class="sub" aria-hidden="true"></span>
-  </button>
-
-  <p id="status" class="status" role="status" aria-live="polite">&nbsp;</p>
-
-  <footer>{{printf .T.ValidUntil .Expires}}</footer>
-  <script type="application/json" id="texts">{{.T.JS}}</script>
-  <script src="/_s/app.js?v={{.V}}" defer></script>
-{{- else if eq .State "expired"}}
-  <svg class="big-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
-  <h1>{{.T.ExpiredTitle}}</h1>
-  <p class="hint">{{if .Name}}{{printf .T.ExpiredNamed .Name}}{{else}}{{.T.Expired}}{{end}}</p>
-{{- else}}
+<main id="card" class="card msg">
+{{- if .NotFound}}
   <svg class="big-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/></svg>
   <h1>{{.T.InvalidTitle}}</h1>
   <p class="hint">{{.T.Invalid}}</p>
+{{- else}}
+  <div id="ready" class="view" hidden>
+    <header>
+      <h1 id="title"></h1>
+      <p id="hint" class="hint"></p>
+    </header>
+
+    <button id="open" class="gate-btn" type="button" data-state="idle">
+      <span class="ring" aria-hidden="true"></span>
+      <span class="progress" aria-hidden="true"></span>
+      <svg class="icon icon-gate" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M2.5 21.5V4.5M21.5 21.5V4.5"/>
+        <path class="leaf leaf-l" d="M2.5 8H11.7V19H2.5M2.5 19L11.7 8"/>
+        <path class="leaf leaf-r" d="M21.5 8H12.3V19H21.5M21.5 19L12.3 8"/>
+      </svg>
+      <svg class="icon icon-err" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20.5h20L12 3zM12 10v4.5M12 17.5v.01"/></svg>
+      <span class="spinner" aria-hidden="true"></span>
+      <span class="label">{{.T.JS.Open}}</span>
+      <span class="sub" aria-hidden="true"></span>
+    </button>
+
+    <p id="status" class="status" role="status" aria-live="polite">&nbsp;</p>
+
+    <footer id="footer"></footer>
+  </div>
+  <div id="msg" class="view" hidden>
+    <svg id="icon-expired" class="big-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+    <svg id="icon-invalid" class="big-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/></svg>
+    <h1 id="msg-title"></h1>
+    <p id="msg-text" class="hint"></p>
+  </div>
+  <noscript><p class="hint">{{.T.NoScript}}</p></noscript>
+  <script type="application/json" id="texts">{{.T.JS}}</script>
+  <script src="/_s/app.js?v={{.V}}" defer></script>
 {{- end}}
 </main>
 </body>

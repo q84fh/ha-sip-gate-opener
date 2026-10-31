@@ -174,3 +174,5 @@ footer { color: var(--muted); font-size: .9rem; }
 }
 
 .card.msg { justify-content: center; gap: 12px; }
+.view { display: contents; }
+[hidden] { display: none !important; }

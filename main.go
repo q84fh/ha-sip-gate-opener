@@ -179,7 +179,7 @@ func tokenCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%s/%s\n", strings.TrimRight(env("GATE_BASE_URL", "http://localhost:8080"), "/"), tok)
+	fmt.Printf("%s/#%s\n", strings.TrimRight(env("GATE_BASE_URL", "http://localhost:8080"), "/"), tok)
 	fmt.Fprintf(os.Stderr, "Valid until: %s, ID: %s\n", t.Expires.Format("2006-01-02 15:04 MST"), t.ID)
 	return nil
 }
@@ -193,7 +193,7 @@ func inspectCmd(args []string) error {
 		return err
 	}
 	raw := args[0]
-	if i := strings.LastIndexByte(raw, '/'); i >= 0 {
+	if i := strings.LastIndexAny(raw, "/#"); i >= 0 {
 		raw = raw[i+1:]
 	}
 	t, err := ParseToken(secret, raw, time.Now())

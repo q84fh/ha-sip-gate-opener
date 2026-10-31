@@ -7,14 +7,12 @@
   const sub = btn.querySelector(".sub");
   const leafL = btn.querySelector(".leaf-l");
   const leafR = btn.querySelector(".leaf-r");
-  const openURL = location.pathname.replace(/\/+$/, "") + "/open";
-  const L = JSON.parse(document.getElementById("texts").textContent);
+  const $ = (id) => document.getElementById(id);
+  const L = JSON.parse($("texts").textContent);
+  // The token is in the URL fragment, which the browser never sends to the server.
+  const token = location.hash.slice(1);
 
-  const T = {
-    opening: parseFloat(btn.dataset.opening) || 25,
-    open: parseFloat(btn.dataset.open) || 10,
-    closing: parseFloat(btn.dataset.closing) || 25,
-  };
+  const T = { opening: 25, open: 10, closing: 25 };
   const total = () => T.opening + T.open + T.closing;
 
   let cycleStart = null; // performance.now() timestamp of the (virtual) cycle start
@@ -125,6 +123,40 @@
     }, 4000);
   }
 
+  async function api(path) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 20000);
+    try {
+      const res = await fetch(path, {
+        method: "POST", cache: "no-store", credentials: "omit", signal: ctrl.signal,
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }),
+      });
+      return { res, data: await res.json().catch(() => ({})) };
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  function showView(d) {
+    const ready = d.state === "ready";
+    $("card").classList.toggle("msg", !ready);
+    $("ready").hidden = !ready;
+    $("msg").hidden = ready;
+    if (ready) {
+      $("title").textContent = d.title;
+      $("hint").textContent = d.text;
+      $("footer").textContent = d.footer || "";
+      setCycle(d.gate);
+      render();
+    } else {
+      // SVG elements have no .hidden property, so set the attribute.
+      $("icon-expired").toggleAttribute("hidden", d.state !== "expired");
+      $("icon-invalid").toggleAttribute("hidden", d.state === "expired");
+      $("msg-title").textContent = d.title;
+      $("msg-text").textContent = d.text;
+    }
+  }
+
   btn.addEventListener("click", async () => {
     const s = btn.dataset.state;
     if (s !== "idle" && s !== "closing" && s !== "err") return;
@@ -135,13 +167,9 @@
     vibrate(30);
     kick();
 
-    let res, data = {};
+    let res, data;
     try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 20000);
-      res = await fetch(openURL, { method: "POST", cache: "no-store", credentials: "omit", signal: ctrl.signal });
-      clearTimeout(t);
-      data = await res.json().catch(() => ({}));
+      ({ res, data } = await api("/api/open"));
     } catch (_) {
       return fail(L.offline);
     }
@@ -157,6 +185,9 @@
     fail(data.message || L.genericFailure);
   });
 
-  setCycle({ elapsed: parseFloat(btn.dataset.elapsed) });
-  render();
+  addEventListener("hashchange", () => location.reload());
+
+  api("/api/status")
+    .then(({ data }) => showView(data.state ? data : { state: "invalid", title: L.unavailable, text: L.genericFailure }))
+    .catch(() => showView({ state: "invalid", title: L.unavailable, text: L.offline }));
 })();

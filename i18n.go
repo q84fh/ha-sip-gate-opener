@@ -20,6 +20,7 @@ type Lang struct {
 	ExpiredNamed string // %s = guest name
 	InvalidTitle string
 	Invalid      string
+	NoScript     string
 
 	Forbidden     string
 	LinkInvalid   string
@@ -68,6 +69,7 @@ var langs = map[string]*Lang{
 		ExpiredNamed: "%s, this link is no longer active. Ask your host for a new one.",
 		InvalidTitle: "Invalid link",
 		Invalid:      "Make sure you copied the whole address, or ask your host for a new link.",
+		NoScript:     "This page needs JavaScript.",
 
 		Forbidden:     "Request not allowed.",
 		LinkInvalid:   "This link is invalid.",
@@ -111,6 +113,7 @@ var langs = map[string]*Lang{
 		ExpiredNamed: "%s, ten link nie jest już aktywny. Poproś gospodarza o nowy.",
 		InvalidTitle: "Nieprawidłowy link",
 		Invalid:      "Sprawdź, czy skopiowałeś cały adres, albo poproś gospodarza o nowy link.",
+		NoScript:     "Ta strona wymaga JavaScriptu.",
 
 		Forbidden:     "Niedozwolone żądanie.",
 		LinkInvalid:   "Link jest nieprawidłowy.",

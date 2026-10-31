@@ -8,10 +8,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"log/slog"
 	"math"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -65,12 +67,9 @@ type GateState struct {
 }
 
 type pageData struct {
-	State   string // ready | expired | invalid
-	Name    string
-	Expires string
-	Gate    GateState
-	T       *Lang
-	V       string // static assets version, for cache busting
+	NotFound bool
+	T        *Lang
+	V        string // static assets version, for cache busting
 }
 
 // elapsedLocked returns time since cycle start, or false when the gate is closed.
@@ -142,14 +141,18 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	h.Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "+
 		"manifest-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 
-	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	// Links look like https://gate.example/#<token>. Browsers don't send the part after "#",
+	// so the token never appears in request lines, access logs or Referer headers;
+	// the page reads it and sends it in the body of API requests.
 	switch {
-	case len(parts) == 1 && parts[0] != "" && (r.Method == http.MethodGet || r.Method == http.MethodHead):
-		s.page(w, r, parts[0])
-	case len(parts) == 2 && parts[1] == "open" && r.Method == http.MethodPost:
-		s.open(w, r, parts[0])
+	case r.URL.Path == "/" && (r.Method == http.MethodGet || r.Method == http.MethodHead):
+		s.render(w, r, http.StatusOK, pageData{})
+	case r.URL.Path == "/api/status" && r.Method == http.MethodPost:
+		s.status(w, r)
+	case r.URL.Path == "/api/open" && r.Method == http.MethodPost:
+		s.open(w, r)
 	default:
-		s.render(w, r, http.StatusNotFound, pageData{State: "invalid"})
+		s.render(w, r, http.StatusNotFound, pageData{NotFound: true})
 	}
 }
 
@@ -161,21 +164,57 @@ func (s *Server) check(raw string) (Token, error) {
 	return t, err
 }
 
-func (s *Server) page(w http.ResponseWriter, r *http.Request, raw string) {
+// apiRequest checks that an API call comes from our own page and returns the token from its JSON body.
+// Requiring application/json also makes browsers send a CORS preflight for cross-site requests.
+func (s *Server) apiRequest(w http.ResponseWriter, r *http.Request) (string, bool) {
+	ct, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if !sameOrigin(r) || ct != "application/json" {
+		s.Log.Warn("cross-origin request rejected", "ip", s.clientIP(r), "path", r.URL.Path, "origin", r.Header.Get("Origin"))
+		return "", false
+	}
+	var req struct {
+		Token string `json:"token"`
+	}
+	json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&req)
+	return req.Token, true
+}
+
+// statusResponse tells the page what to show; texts are already localized.
+type statusResponse struct {
+	State  string     `json:"state"` // ready | expired | invalid
+	Title  string     `json:"title"`
+	Text   string     `json:"text"`
+	Footer string     `json:"footer,omitempty"`
+	Gate   *GateState `json:"gate,omitempty"`
+}
+
+func (s *Server) status(w http.ResponseWriter, r *http.Request) {
+	l := pickLang(r, s.Lang)
+	raw, ok := s.apiRequest(w, r)
+	if !ok {
+		writeJSON(w, http.StatusForbidden, statusResponse{State: "invalid", Title: l.InvalidTitle, Text: l.Forbidden})
+		return
+	}
 	t, err := s.check(raw)
 	switch {
 	case err == nil:
-		s.render(w, r, http.StatusOK, pageData{
-			State:   "ready",
-			Name:    t.Name,
-			Expires: t.Expires.In(s.Location).Format(pickLang(r, s.Lang).DateFormat),
-			Gate:    s.gateState(s.Now()),
-		})
+		resp := statusResponse{State: "ready", Title: l.Welcome, Text: l.Hint,
+			Footer: fmt.Sprintf(l.ValidUntil, t.Expires.In(s.Location).Format(l.DateFormat))}
+		if t.Name != "" {
+			resp.Title = fmt.Sprintf(l.Hello, t.Name)
+		}
+		gs := s.gateState(s.Now())
+		resp.Gate = &gs
+		writeJSON(w, http.StatusOK, resp)
 	case errors.Is(err, ErrExpired):
-		s.render(w, r, http.StatusGone, pageData{State: "expired", Name: t.Name})
+		resp := statusResponse{State: "expired", Title: l.ExpiredTitle, Text: l.Expired}
+		if t.Name != "" {
+			resp.Text = fmt.Sprintf(l.ExpiredNamed, t.Name)
+		}
+		writeJSON(w, http.StatusOK, resp)
 	default:
-		s.Log.Warn("invalid token", "ip", s.clientIP(r), "path_len", len(raw))
-		s.render(w, r, http.StatusNotFound, pageData{State: "invalid"})
+		s.Log.Warn("invalid token", "ip", s.clientIP(r), "token_len", len(raw))
+		writeJSON(w, http.StatusOK, statusResponse{State: "invalid", Title: l.InvalidTitle, Text: l.Invalid})
 	}
 }
 
@@ -200,11 +239,11 @@ type openResponse struct {
 	Gate       *GateState `json:"gate,omitempty"`
 }
 
-func (s *Server) open(w http.ResponseWriter, r *http.Request, raw string) {
+func (s *Server) open(w http.ResponseWriter, r *http.Request) {
 	ip := s.clientIP(r)
 	l := pickLang(r, s.Lang)
-	if !sameOrigin(r) {
-		s.Log.Warn("cross-origin open rejected", "ip", ip, "origin", r.Header.Get("Origin"))
+	raw, ok := s.apiRequest(w, r)
+	if !ok {
 		writeJSON(w, http.StatusForbidden, openResponse{Message: l.Forbidden})
 		return
 	}
