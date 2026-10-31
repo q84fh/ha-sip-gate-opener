@@ -1,0 +1,4 @@
+/gate-opener
+.env
+*.local.yaml
+.dev-secret

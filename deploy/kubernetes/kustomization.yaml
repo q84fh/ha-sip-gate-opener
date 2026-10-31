@@ -1,0 +1,37 @@
+# Kustomize base. Use it from your own overlay, e.g.:
+#
+#   resources:
+#     - https://github.com/q84fh/ha-sip-gate-opener//deploy/kubernetes?ref=v1.0.0
+#
+# and create the secret (not managed here):
+#
+#   kubectl -n <ns> create secret generic gate-opener \
+#     --from-literal=GATE_SECRET="$(openssl rand -base64 32)" \
+#     --from-literal=GATE_WEBHOOK_URL=http://homeassistant.local:8123/api/webhook/<id>
+#
+# See the README for a complete overlay.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+labels:
+  - pairs:
+      app.kubernetes.io/name: gate-opener
+    includeSelectors: true
+resources:
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+images:
+  - name: gate-opener
+    newName: ghcr.io/q84fh/ha-sip-gate-opener
+    newTag: latest
+configMapGenerator:
+  - name: gate-opener
+    literals:
+      - GATE_BASE_URL=https://gate.example.com
+      - GATE_OPENING=25s
+      - GATE_OPEN_HOLD=10s
+      - GATE_CLOSING=25s
+      - GATE_LANG=en
+      - GATE_IP_HEADER=X-Real-IP
+      - GATE_REVOKED=
+      - TZ=UTC

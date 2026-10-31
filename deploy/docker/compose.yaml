@@ -1,0 +1,13 @@
+# docker compose up -d
+# Then put it behind a reverse proxy with HTTPS (Caddy, nginx, Traefik, Cloudflare Tunnel…)
+# and create links with: docker compose exec gate-opener /gate-opener token -ttl 24h -name Ann
+services:
+  gate-opener:
+    image: ghcr.io/q84fh/ha-sip-gate-opener:latest
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]

@@ -1,0 +1,51 @@
+# Home Assistant automation called by ha-sip-gate-opener.
+# Paste it in Settings → Automations → ⋮ → Edit in YAML, then replace:
+#   CHANGE_ME_WEBHOOK_ID  – a long random string, e.g. `openssl rand -hex 24`; keep it secret,
+#                           the app gets it in GATE_WEBHOOK_URL=http://<ha>:8123/api/webhook/<id>
+#   CHANGE_ME_ha-sip      – the ha-sip add-on slug (Settings → Add-ons → ha-sip, it is in the URL,
+#                           usually c7744bff_ha-sip)
+#   number                – the SIP address/phone number that opens your gate
+#   notify.mobile_app_…   – your phone in the Home Assistant app (or remove that action)
+#
+# The webhook payload is JSON: {"name": "<guest name>", "token_id": "<link ID>", "ip": "<guest IP>"}.
+id: ha_sip_gate_opener
+alias: Gate – opened by a guest (ha-sip-gate-opener)
+description: Called by ha-sip-gate-opener when a guest presses the button.
+mode: single
+max_exceeded: silent
+triggers:
+  - trigger: webhook
+    webhook_id: CHANGE_ME_WEBHOOK_ID
+    allowed_methods: [POST]
+    local_only: true
+actions:
+  # Open the gate by calling its GSM/SIP controller with ha-sip.
+  # Without ha-sip, use any action that opens your gate instead, e.g.:
+  #   - action: switch.turn_on
+  #     target: {entity_id: switch.gate}
+  #   - action: cover.open_cover
+  #     target: {entity_id: cover.gate}
+  - action: hassio.addon_stdin
+    data:
+      addon: CHANGE_ME_ha-sip
+      input:
+        command: dial
+        number: sip:CHANGE_ME@sip.example.com
+        sip_account: 1
+        ring_timeout: 30
+        menu:
+          timeout: 15
+          post_action: hangup
+  - action: notify.mobile_app_CHANGE_ME
+    continue_on_error: true
+    data:
+      title: Gate
+      message: >-
+        Opened by guest: {{ trigger.json.name | default('', true) or 'no name' }},
+        {{ now().strftime('%Y-%m-%d %H:%M') }}
+  - action: logbook.log
+    data:
+      name: Gate
+      message: >-
+        opened by guest {{ trigger.json.name | default('', true) or 'no name' }}
+        (link {{ trigger.json.token_id | default('?') }}, IP {{ trigger.json.ip | default('?') }})

@@ -1,0 +1,25 @@
+# Patch host, TLS and ingressClassName in your overlay.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gate-opener
+  annotations:
+    # ingress-nginx: basic rate limiting per client IP
+    nginx.ingress.kubernetes.io/limit-rps: "5"
+    nginx.ingress.kubernetes.io/limit-connections: "10"
+spec:
+  rules:
+    - host: gate.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: gate-opener
+                port:
+                  name: http
+  tls:
+    - hosts:
+        - gate.example.com
+      secretName: gate-opener-tls
