@@ -1,5 +1,5 @@
 # Base images are pinned by digest; Dependabot keeps tags and digests up to date.
-FROM --platform=$BUILDPLATFORM golang:1.27.4-alpine@sha256:0a5f7fe796599ff487605987432e7619ae45beeb2fba4c2ce0b907879932aebf AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.4-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS build
 ARG TARGETOS TARGETARCH TARGETVARIANT VERSION=dev
 WORKDIR /src
 COPY go.mod ./
